@@ -1,0 +1,202 @@
+# SPDX-License-Identifier: Apache-2.0
+
+version: "3.8"
+services:
+  services:
+  app:
+    build:
+      context: './docker_laravel/'
+      # dockerfile: ./docker_laravel/Dockerfile
+    container_name: laravel-app
+    ports:
+      - "8000:80"
+    volumes:
+      - ./src:/var/www/html
+    depends_on:
+      - mysql
+    # networks:
+    #   - laravel
+
+  mysql:
+    # build:
+    #   context: './docker_db/'
+    image: mysql:8
+    container_name: mysql
+    restart: always
+    ports:
+      - "3306:3306"
+    environment:
+      # MYSQL_DATABASE: ${DB_DATABASE}
+      MYSQL_DATABASE: sakila
+      # MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
+      # MYSQL_PASSWORD: ${DB_PASSWORD}
+      # MYSQL_USER: ${DB_USERNAME}
+      MYSQL_USER: user 
+      MYSQL_ROOT_PASSWORD: rootpass
+      MYSQL_PASSWORD: pass
+      MYSQL_ALLOW_EMPTY_PASSWORD: 'yes'
+    volumes:
+      - ./src/database/db_mysql/:/var/lib/mysql
+      - ./src/database/sakila/sakila-schema.sql:/docker-entrypoint-initdb.d/1_sakila.sql
+      - ./src/database/sakila/sakila-data.sql:/docker-entrypoint-initdb.d/2_sakila.sql
+      # - ./src/database/db_mysql/sakila:/docker-entrypoint-initdb.d
+    # networks:
+    #   - laravel
+
+  clickhouse:
+    # networks:
+    #   - laravel
+    container_name: clickhouse
+    image: yandex/clickhouse-server:latest
+    # environment:
+      # CLICKHOUSE_INIT_TIMEOUT: 120
+    ports:
+      - "8123:8123"
+    volumes:
+      # - ./src/database/sakila/clickhouse.sql:/docker-entrypoint-initdb.d/clickhouse.sql
+      # - ./src/database/clickhouse/:/docker-entrypoint-initdb.d
+      - ./src/database/db_clickhouse/data/:/var/lib/clickhouse/
+      - ./src/database/db_clickhouse/log/:/var/log/clickhouse-server/
+  airflow:
+    image: bitnami/airflow:2
+    # image: bitnami/airflow:1.10.13
+    ports:
+      - "8080:8080"
+    env_file:
+      - openlineage.env
+    environment:
+      - AIRFLOW_USERNAME=airflow
+      - AIRFLOW_PASSWORD=airflow
+      - AIRFLOW_EMAIL=airflow@example.com
+      - AIRFLOW_FERNET_KEY=Z2uDm0ZL60fXNkEXG8LW99Ki2zf8wkmIltaTz1iQPDU=
+      - AIRFLOW_SECRET_KEY=a25mQ1FHTUh3MnFRSk5KMEIyVVU2YmN0VGRyYTVXY08=
+      - AIRFLOW_DATABASE_HOST=postgres
+      - AIRFLOW_DATABASE_NAME=airflow
+      - AIRFLOW_DATABASE_USERNAME=airflow
+      - AIRFLOW_DATABASE_PASSWORD=airflow
+      # - AIRFLOW__CORE__ENABLE_XCOM_PICKLING=yes
+      - AIRFLOW_EXECUTOR=CeleryExecutor
+      - AIRFLOW_LOAD_EXAMPLES=no
+      # - AIRFLOW_WEBSERVER_HOST=airflow
+      - AIRFLOW_CONN_EXAMPLE_DB=postgres://example:example@postgres:5432/example
+      - AIRFLOW__LINEAGE__BACKEND=openlineage.lineage_backend.OpenLineageBackend
+    depends_on:
+      - postgres  
+    volumes:
+      - ./dags:/opt/bitnami/airflow/dags
+      - ./logs:/opt/bitnami/airflow/logs
+      - ./requirements.txt:/requirements.txt
+      - //var/run/docker.sock:/var/run/docker.sock
+      - type: bind
+        source: ./requirements.txt
+        target: /bitnami/python/requirements.txt
+
+  airflow_scheduler:
+    image: bitnami/airflow-scheduler:2
+    # image: bitnami/airflow-scheduler:1.10.13
+    env_file:
+      - openlineage.env
+    environment:
+      - AIRFLOW_FERNET_KEY=Z2uDm0ZL60fXNkEXG8LW99Ki2zf8wkmIltaTz1iQPDU=
+      - AIRFLOW_SECRET_KEY=a25mQ1FHTUh3MnFRSk5KMEIyVVU2YmN0VGRyYTVXY08=
+      - AIRFLOW_DATABASE_HOST=postgres
+      - AIRFLOW_DATABASE_NAME=airflow
+      - AIRFLOW_DATABASE_USERNAME=airflow
+      - AIRFLOW_DATABASE_PASSWORD=airflow
+      - AIRFLOW_EXECUTOR=CeleryExecutor
+      # - AIRFLOW__CORE__ENABLE_XCOM_PICKLING=yes
+      - AIRFLOW_LOAD_EXAMPLES=no
+      - AIRFLOW_CONN_EXAMPLE_DB=postgres://example:example@postgres:5432/example
+      - AIRFLOW_WEBSERVER_HOST=airflow
+      - AIRFLOW__LINEAGE__BACKEND=openlineage.lineage_backend.OpenLineageBackend
+    volumes:
+      - ./dags:/opt/bitnami/airflow/dags
+      - ./logs:/opt/bitnami/airflow/logs
+      - //var/run/docker.sock:/var/run/docker.sock
+      - type: bind
+        source: ./requirements.txt
+        target: /bitnami/python/requirements.txt
+    # depends_on:
+    #   - postgres
+
+  airflow_worker:
+    image: bitnami/airflow-worker:2
+    # image: bitnami/airflow-worker:1.10.13
+    env_file:
+      - openlineage.env
+    environment:
+      - AIRFLOW_FERNET_KEY=Z2uDm0ZL60fXNkEXG8LW99Ki2zf8wkmIltaTz1iQPDU=
+      - AIRFLOW_SECRET_KEY=a25mQ1FHTUh3MnFRSk5KMEIyVVU2YmN0VGRyYTVXY08=
+      - AIRFLOW_DATABASE_HOST=postgres
+      - AIRFLOW_DATABASE_NAME=airflow
+      - AIRFLOW_DATABASE_USERNAME=airflow
+      - AIRFLOW_DATABASE_PASSWORD=airflow
+      - AIRFLOW_EXECUTOR=CeleryExecutor
+      # - AIRFLOW__CORE__ENABLE_XCOM_PICKLING=yes
+      # - AIRFLOW_EXECUTOR=LocalExecutor 
+      - AIRFLOW_LOAD_EXAMPLES=no
+      - AIRFLOW_CONN_EXAMPLE_DB=postgres://example:example@postgres:5432/example
+      - AIRFLOW_WEBSERVER_HOST=airflow
+      # - AIRFLOW__WEBSERVER__WEB_SERVER_WORKER_TIMEOUT=300
+      - AIRFLOW__LINEAGE__BACKEND=openlineage.lineage_backend.OpenLineageBackend
+    volumes:
+      - ./dags:/opt/bitnami/airflow/dags
+      - ./logs:/opt/bitnami/airflow/logs
+      - //var/run/docker.sock:/var/run/docker.sock
+      # - ${PWD}/whl:/whl
+      - type: bind
+        source: ./requirements.txt
+        target: /bitnami/python/requirements.txt
+    # depends_on:
+    #   - airflow
+
+  marquez:
+    image: marquezproject/marquez:latest
+    ports:
+      - "5000:5000"
+      - "5001:5001"
+    volumes:
+      - ./docker/wait-for-it.sh:/usr/src/app/wait-for-it.sh
+    depends_on:
+      - postgres
+    entrypoint: ["./wait-for-it.sh", "postgres:5432", "--", "./entrypoint.sh"]
+    # Enables SQL statement logging (see: https://www.postgresql.org/docs/12/runtime-config-logging.html#GUC-LOG-STATEMENT)
+    # command: ["postgres", "-c", "log_statement=all"]
+
+  marquez_web:
+    image: marquezproject/marquez-web:latest
+    container_name: marquez-web
+    environment:
+      - MARQUEZ_HOST=marquez
+      - MARQUEZ_PORT=5000
+    ports:
+      - "3000:3000"
+    stdin_open: true
+    tty: true
+    depends_on:
+      - marquez
+
+  postgres:
+    image: bitnami/postgresql:12.1.0
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - AIRFLOW_USER=airflow
+      - AIRFLOW_PASSWORD=airflow
+      - AIRFLOW_DB=airflow
+      - MARQUEZ_USER=marquez
+      - MARQUEZ_PASSWORD=marquez
+      - MARQUEZ_DB=marquez
+      - EXAMPLE_USER=example
+      - EXAMPLE_PASSWORD=example
+      - EXAMPLE_DB=example
+      - ALLOW_EMPTY_PASSWORD=yes
+    volumes:
+      - ./docker/init-db.sh:/docker-entrypoint-initdb.d/init-db.sh
+
+  redis:
+    image: bitnami/redis:6.0.6
+    environment:
+      - ALLOW_EMPTY_PASSWORD=yes
